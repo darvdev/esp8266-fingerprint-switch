@@ -129,25 +129,29 @@ void setup() {
   _sensorIsAvailable = finger.verifyPassword();
 
   if (_sensorIsAvailable) {
-    Serial.println("Found sensor!");
+    Serial.println("\nFound sensor!");
     // Serial.println(F("Reading fingerprint sensor parameters"));
     // finger.getParameters();
     // Serial.println("Getting fingerprint template counts");
     // finger.getTemplateCount();
     // Serial.println("Sensor initialize done!");
   } else {
-    Serial.println("Sensor is nor available");
+    Serial.println("\nSensor is not available");
   }
 
   if (SPIFFS.begin()) {
     Serial.println("SPIFFS mounted");
+    _apSsid = getConfig("/ap_ssid.txt", _apSsid);
+    _apPass = getConfig("/ap_pass.txt", _apPass);
     _pass = getConfig("/pass.txt", _pass);
     _wifiSsid = getConfig("/wifi_ssid.txt", _wifiSsid);
     _wifiPass = getConfig("/wifi_pass.txt", _wifiPass);
   }
 
   
-  Serial.print("Pass: "); Serial.println(_pass);
+  Serial.print("Admin pass: "); Serial.println(_pass);
+  Serial.print("AP ssid: "); Serial.println(_apSsid);
+  Serial.print("AP pass: "); Serial.println(_apPass);
   // Serial.print("Wifi SSID: "); Serial.println(_wifiSsid);
   // Serial.print("Wifi Pass: "); Serial.println(_wifiPass);
 
@@ -505,9 +509,11 @@ bool enrollFingerprint() {
 }
 
 String getConfig(String f, String data) {
+  Serial.println("Getting config");
   String value = data;
   File file = SPIFFS.open(f, "r");
   if (file) {
+    Serial.println("File is open");
     Serial.print(F("Reading "));
     Serial.print(f);
     Serial.print(F(" file... "));
@@ -525,6 +531,8 @@ String getConfig(String f, String data) {
     if (text != "") {
       value = text;
     }
+  } else {
+    Serial.println("File is not open");
   }
 
   file.close();
@@ -644,7 +652,6 @@ void relay(String param) {
   if (request != "") {
     
     if (request == "state") {
-      Serial.print("index ");Serial.println(index);
       if (index == -1) {
         String data = _relayState ? "1" : "0";
         ws.text(_clientId, json("success", "relay", "state", "\"" + data + "\""));
