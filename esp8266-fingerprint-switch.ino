@@ -9,13 +9,14 @@
 #define FP_RX_PIN 5
 #define PORT 4848
 #define DELAY_MILLIS 1500
+#define BAUD_RATE 115200
 #define VERSION "1.0"
 
 
 static const String PATH = "v1";
 
-//String _apSsid = "DigiPiratePro";
-//String _apPass = "12345678";
+String _apSsid = "DigiPiratePro";
+String _apPass = "";
 
 String _wifiSsid = "VinStudios Network";
 String _wifiPass = "xoxoxoxox";
@@ -122,18 +123,20 @@ void setup() {
   pinMode(LED_PIN, OUTPUT);
   pinMode(RELAY_PIN, OUTPUT);
   digitalWrite(RELAY_PIN, LOW);
-  Serial.begin(9600);
+  Serial.begin(BAUD_RATE);
 
   finger.begin(57600);
   _sensorIsAvailable = finger.verifyPassword();
 
   if (_sensorIsAvailable) {
-    Serial.println("Found fingerprint sensor!");
-    Serial.println(F("Reading fingerprint sensor parameters"));
-    finger.getParameters();
-    Serial.println("Getting fingerprint template counts");
-    finger.getTemplateCount();
-    Serial.println("Sensor initialize done!");
+    Serial.println("Found sensor!");
+    // Serial.println(F("Reading fingerprint sensor parameters"));
+    // finger.getParameters();
+    // Serial.println("Getting fingerprint template counts");
+    // finger.getTemplateCount();
+    // Serial.println("Sensor initialize done!");
+  } else {
+    Serial.println("Sensor is nor available");
   }
 
   if (SPIFFS.begin()) {
@@ -145,25 +148,24 @@ void setup() {
 
   
   Serial.print("Pass: "); Serial.println(_pass);
-  Serial.print("Wifi SSID: "); Serial.println(_wifiSsid);
-  Serial.print("Wifi Pass: "); Serial.println(_wifiPass);
+  // Serial.print("Wifi SSID: "); Serial.println(_wifiSsid);
+  // Serial.print("Wifi Pass: "); Serial.println(_wifiPass);
 
-  //  WiFi.mode(WIFI_AP_STA);
-  //  WiFi.softAP(_apSsid, _apPass);
-  //  Serial.println("Server started at ");
-  //  Serial.println(WiFi.softAPIP());
+   WiFi.mode(WIFI_AP_STA);
+   WiFi.softAP(_apSsid, _apPass);
+   Serial.print("AP ip address: "); Serial.println(WiFi.softAPIP());
 
-  if (_wifiSsid != "") {
-    Serial.print("Connecting to wifi ");
-    WiFi.begin(_wifiSsid, _wifiPass);
-    while (WiFi.status() != WL_CONNECTED) {
-      delay(300);
-      Serial.print(".");
-    }
-    Serial.println();
-    Serial.print("Connected! IP address: ");
-    Serial.println(WiFi.localIP());
-  }
+  // if (_wifiSsid != "") {
+  //   Serial.print("Connecting to wifi ");
+  //   WiFi.begin(_wifiSsid, _wifiPass);
+  //   while (WiFi.status() != WL_CONNECTED) {
+  //     delay(300);
+  //     Serial.print(".");
+  //   }
+  //   Serial.println();
+  //   Serial.print("Connected! IP address: ");
+  //   Serial.println(WiFi.localIP());
+  // }
 
   ws.onEvent(onEvent);
   server.addHandler(&ws);
@@ -339,9 +341,9 @@ bool enrollFingerprint() {
     return true;
   }
 
-  delay(1000);
+  delay(500);
   ws.text(_clientId, json("success", "sensor", "enroll", "\"Reading fingerprint...\""));
-  delay(1000);
+  delay(500);
   //   OK success!
   
   p = finger.image2Tz(1);
@@ -375,7 +377,7 @@ bool enrollFingerprint() {
   //  delay(1000);
   //  Serial.println("Remove finger");
   //  ws.text(_clientId, json("success", "sensor", "enroll", "\"Remove your finger to the sensor\""));
-  delay(2000);
+  delay(500);
 
   p = 0;
   while (p != FINGERPRINT_NOFINGER && _clientId != 0 && _session == SESSION.sensor_enroll) {
@@ -415,9 +417,9 @@ bool enrollFingerprint() {
   }
 
   // OK success!
-  delay(1000);
+  delay(500);
   ws.text(_clientId, json("success", "sensor", "enroll", "\"Reading fingerprint...\""));
-  delay(1000);
+  delay(500);
 
   p = finger.image2Tz(2);
   switch (p) {
@@ -448,10 +450,10 @@ bool enrollFingerprint() {
   }
 
   // OK converted!
-  delay(1000);
+  delay(500);
     ws.text(_clientId, json("success", "sensor", "enroll", "\"Validating fingerprints...\""));
   Serial.print("Creating model for #");  Serial.println(_fingerId);
-    delay(1000);
+    delay(500);
 
   p = finger.createModel();
   if (p == FINGERPRINT_OK) {
@@ -472,9 +474,9 @@ bool enrollFingerprint() {
     return true;
   }
 
-  delay(1000);
+  delay(500);
   ws.text(_clientId, json("success", "sensor", "enroll", "\"Saving fingerprint...\""));
-  delay(1000);
+  delay(500);
 
   p = finger.storeModel(_fingerId);
   if (p == FINGERPRINT_OK) {
@@ -495,7 +497,7 @@ bool enrollFingerprint() {
     ws.text(_clientId, json("error", "sensor", "enroll", "\"Unknown error\""));
   }
 
-  delay(1000);
+  delay(500);
   ws.text(_clientId, json("success", "sensor", "enroll", "\"done\""));
   Serial.println("Fingerprint enroll done!");
   //  _session = SESSION.ready;
