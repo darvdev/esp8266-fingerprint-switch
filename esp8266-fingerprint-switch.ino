@@ -10,16 +10,16 @@
 #define PORT 4848
 #define DELAY_MILLIS 1500
 #define BAUD_RATE 115200
-#define VERSION "1.0"
 
 
+static const String VERSION = "1.0";
 static const String PATH = "v1";
 
-String _apSsid = "DigiPiratePro";
+String _apSsid = "FingerprintSwitch v" + VERSION;
 String _apPass = "";
 
-String _wifiSsid = "VinStudios Network";
-String _wifiPass = "xoxoxoxox";
+String _wifiSsid = "";
+String _wifiPass = "!";
 
 bool _ledState = false;
 bool _relayState = false;
@@ -152,12 +152,12 @@ void setup() {
   Serial.print("Admin pass: "); Serial.println(_pass);
   Serial.print("AP ssid: "); Serial.println(_apSsid);
   Serial.print("AP pass: "); Serial.println(_apPass);
-  // Serial.print("Wifi SSID: "); Serial.println(_wifiSsid);
-  // Serial.print("Wifi Pass: "); Serial.println(_wifiPass);
+  Serial.print("Wifi SSID: "); Serial.println(_wifiSsid);
+  Serial.print("Wifi Pass: "); Serial.println(_wifiPass);
 
    WiFi.mode(WIFI_AP_STA);
    WiFi.softAP(_apSsid, _apPass);
-   Serial.print("AP ip address: "); Serial.println(WiFi.softAPIP());
+   Serial.print("Please connect to "); Serial.println(WiFi.softAPIP());
 
   // if (_wifiSsid != "") {
   //   Serial.print("Connecting to wifi ");
@@ -509,14 +509,12 @@ bool enrollFingerprint() {
 }
 
 String getConfig(String f, String data) {
-  Serial.println("Getting config");
   String value = data;
   File file = SPIFFS.open(f, "r");
   if (file) {
-    Serial.println("File is open");
     Serial.print(F("Reading "));
     Serial.print(f);
-    Serial.print(F(" file... "));
+    Serial.println(F(" file... "));
 
     String text = "";
     while (file.available()) {
@@ -531,8 +529,6 @@ String getConfig(String f, String data) {
     if (text != "") {
       value = text;
     }
-  } else {
-    Serial.println("File is not open");
   }
 
   file.close();
