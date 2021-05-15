@@ -34,6 +34,7 @@ String _pass = "1234";
 String _token = "";
 bool _sensorIsAvailable = false;
 bool _sensorIsEnable = true;
+bool _espSet = false;
 
 SoftwareSerial serial(FP_TX_PIN, FP_RX_PIN);
 Adafruit_Fingerprint finger = Adafruit_Fingerprint(&serial);
@@ -155,9 +156,10 @@ void setup() {
   Serial.print("Wifi SSID: "); Serial.println(_wifiSsid);
   Serial.print("Wifi Pass: "); Serial.println(_wifiPass);
 
-   WiFi.mode(WIFI_AP_STA);
-   WiFi.softAP(_apSsid, _apPass);
-   Serial.print("Please connect to "); Serial.println(WiFi.softAPIP());
+  WiFi.SSID() = "tae";
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.softAP(_apSsid, _apPass);
+  Serial.print("Please connect to "); Serial.println(WiFi.softAPIP());
 
   // if (_wifiSsid != "") {
   //   Serial.print("Connecting to wifi ");
@@ -208,11 +210,13 @@ void loop() {
       break;
 
     case SESSION.sensor_download:
+      digitalWrite(LED_PIN, HIGH);
       delay(DELAY_MILLIS);
       downloadFingerprintTemplate();
       break;
 
     case SESSION.sensor_verify:
+      digitalWrite(LED_PIN, HIGH);
       delay(DELAY_MILLIS);
       _sensorIsAvailable = finger.verifyPassword();
       ws.text(_clientId, json("success", "sensor", "available", _sensorIsAvailable ? "\"1\"" : "\"0\""));
@@ -220,11 +224,13 @@ void loop() {
       break;
 
     case SESSION.sensor_info:
+      digitalWrite(LED_PIN, HIGH);
       delay(DELAY_MILLIS);
       getSensorInfo();
       break;
 
     case SESSION.sensor_enroll:
+      digitalWrite(LED_PIN, HIGH);
       delay(DELAY_MILLIS);
       while (!enrollFingerprint()) {
         if (_clientId == 0) {
@@ -235,6 +241,7 @@ void loop() {
       break;
 
      case SESSION.sensor_delete:
+      digitalWrite(LED_PIN, HIGH);
       delay(DELAY_MILLIS);
       deleteFingerprint();
       break; 
@@ -535,6 +542,34 @@ String getConfig(String f, String data) {
   return value;
 }
 
+void setConfig(String f, String data) {
+  _espSet = true;
+  File file = SPIFFS.open(f, "w");
+  if (!file) {
+    Serial.println("Cannot open file for writing");
+    ws.text(_clientId, json("error", "esp", "set", "\"internal error. Cannot save your changes\""));
+  } else {
+    Serial.println("Writing files...");
+
+    int result = file.print(data);
+
+    if (result == 0) {
+      Serial.println("Failed to write");
+      ws.text(_clientId, json("error", "esp", "set", "\"Internal error. Failed to save changes\""));
+    } else {
+      Serial.println("Files written");
+      ws.text(_clientId, json("success", "esp", "set", "\"done\""));
+
+      if (f == "/pass.txt") {
+        _pass = data;
+      }
+
+    }
+  }
+  file.close();
+  _espSet = false;
+}
+
 void login(uint8_t id, String param) {
 
   int index = param.lastIndexOf("?");
@@ -571,8 +606,12 @@ void sensor(String param) {
     request = param;
   }
 
-  if (request != "") {
+  if (request == "") {
+    ws.text(_clientId, json("error", "sensor", "invalid data", "\"" + param + "\""));
 
+  } else {
+
+    
     if (request == "available") {
       _session = SESSION.sensor_verify;
 
@@ -591,6 +630,8 @@ void sensor(String param) {
         } else if (path == "1") {
           _sensorIsEnable = true;
           ws.text(_clientId, json("success", "sensor", "state", "\"1\""));
+        } else {
+          ws.text(_clientId, json("error", "sensor", "invalid state"));
         }
       }
     } else if (request == "download") {
@@ -627,11 +668,10 @@ void sensor(String param) {
         _session = SESSION.sensor_delete;
       }
 
+    } else {
+      ws.text(_clientId, json("error", "sensor", "invalid type", "\"" + request + "\""));
     }
-
-  } else {
-    ws.text(_clientId, json("error", "sensor", "invalid data", "\"" + param + "\""));
-
+    
   }
 }
 
@@ -645,8 +685,12 @@ void relay(String param) {
     request = param;
   }
   
-  if (request != "") {
+  if (request == "") {
+
+    ws.text(_clientId, json("error", "relay", "invalid data", "\"" + param + "\""));
     
+  } else {
+
     if (request == "state") {
       if (index == -1) {
         String data = _relayState ? "1" : "0";
@@ -664,19 +708,87 @@ void relay(String param) {
       digitalWrite(RELAY_PIN, _relayState);
     }
     
-  } else {
-    ws.text(_clientId, json("error", "relay", "invalid data", "\"" + param + "\""));
   }
 }
 
-void esp(String value) {
-  if (value != "") {
-    if (value == "restart") {
-      ws.text(_clientId, json("success", "esp", value));
+void esp(String param) {
+
+  int index = param.lastIndexOf("?");
+  String request = "";
+
+  if (index != -1) {
+    request = param.substring(0, index);
+  } else {
+    request = param;
+  }
+
+  if (request == "") {
+    ws.text(_clientId, json("error", "esp", "invalid data", "\"" + param + "\""));
+  } else {
+
+    if (request == "info") {
+
+      String data = "{"
+                  "\"version\": \"" + VERSION + "\","
+                  "\"pass\": \"" + _pass + "\","
+                  "\"ap_ssid\": \"" + _apSsid + "\","
+                  "\"ap_pass\": \"" + _apPass + "\","
+                  "\"ap_ip\": \"" + WiFi.softAPIP().toString() + "\","
+                  "\"wifi_ssid\": \"" + WiFi.SSID() + "\","
+                  "\"wifi_pass\": \"" + _wifiPass + "\","
+                  "\"wifi_ip\": \"" + WiFi.localIP().toString() + "\","
+                  "\"wifi_gateway\": \"" + WiFi.gatewayIP().toString() + "\","
+                  "\"wifi_subnet\": \"" + WiFi.subnetMask().toString() + "\","
+                  "\"wifi_mac\": \"" + WiFi.macAddress() + "\","
+                  "\"wifi_channel\": \"" + WiFi.channel() + "\","
+                  "\"wifi_state\": \"" + WiFi.isConnected() + "\""
+                  "}";
+
+      ws.text(_clientId, json("success", "esp", "info", data));
+
+    } else if (request == "set") {
+      String param2 = param.substring(index + 1);
+
+      int index2 = param2.indexOf("=");
+
+      if (index2 == -1) {
+        ws.text(_clientId, json("error", "esp", "set", "invalid second parameter"));
+      } else {
+        String request2 = param2.substring(0, index2);
+
+        if (request2 == "") {
+          ws.text(_clientId, json("error", "esp", "set", "invalid request"));
+        } else {
+
+          String value = param2.substring(index2 + 1);
+          if (request2 == "pass") {
+            while (_espSet){}
+            setConfig("/pass.txt", value);
+          } else if (request2 == "ap-ssid") {
+            while (_espSet){}
+            setConfig("/ap_ssid.txt", value);
+          } else if (request2 == "ap-pass") {
+            while (_espSet){}
+            setConfig("/ap_pass.txt", value);
+          } else if (request2 == "wifi-ssid") {
+            while (_espSet){}
+            setConfig("/wifi_ssid.txt", value);
+          } else if (request2 == "wifi-pass") {
+            while (_espSet){}
+            setConfig("/wifi_pass.txt", value);
+          } else {
+            ws.text(_clientId, json("error", "esp", "set", "invalid request"));
+          }
+          
+        }
+
+      }
+
+
+    } else if (request == "restart") {
+      ws.text(_clientId, json("success", "esp", "restart"));
       ESP.restart();
     }
-  } else {
-    ws.text(_clientId, json("error", "esp", "invalid data"));
   }
 }
 
