@@ -4,12 +4,12 @@
 #include <Adafruit_Fingerprint.h>
 
 #define LED_PIN 2
-#define RELAY_PIN 15
-#define FP_TX_PIN 4
-#define FP_RX_PIN 5
+#define RELAY_PIN 4
+#define FP_TX_PIN 13
+#define FP_RX_PIN 12
 #define PORT 4848
 #define DELAY_MILLIS 1500
-#define BAUD_RATE 115200
+#define BAUD_RATE 9600
 
 
 static const String VERSION = "1.0";
@@ -32,9 +32,11 @@ int _fingerId = 0;
 
 String _pass = "1234";
 String _token = "";
+
 bool _sensorIsAvailable = false;
 bool _sensorIsEnable = true;
 bool _espSet = false;
+bool _sensorLogin = false;
 
 SoftwareSerial serial(FP_TX_PIN, FP_RX_PIN);
 Adafruit_Fingerprint finger = Adafruit_Fingerprint(&serial);
@@ -50,6 +52,8 @@ static const struct SESSION {
   static const uint8_t sensor_download = 5;
   static const uint8_t sensor_enroll = 6;
   static const uint8_t sensor_delete = 7;
+  static const uint8_t sensor_empty = 8;
+  // static const uint8_t sensor_login = 9;
 } SESSION;
 
 uint8_t _session = SESSION.init_main;
@@ -246,6 +250,11 @@ void loop() {
       deleteFingerprint();
       break; 
 
+      case SESSION.sensor_empty:
+      digitalWrite(LED_PIN, HIGH);
+      delay(DELAY_MILLIS);
+      emptyFingerprint();
+
     default:
       break;
   }
@@ -301,6 +310,9 @@ void listenToSensor() {
     return;
   } else if (p == FINGERPRINT_NOTFOUND) {
     Serial.println("Did not find a match");
+    if (_clientId > 0) {
+      ws.text(_clientId, json("success", "login", "denied", "\"Fingerprint not found\""));
+    }
     return;
   } else {
     Serial.println("Unknown error");
@@ -313,8 +325,9 @@ void listenToSensor() {
   _relayState =!_relayState;
   digitalWrite(RELAY_PIN, _relayState);
   String data = _relayState ? "1" : "0";
-  if (_clientId != 0) {
+  if (_clientId > 0) {
     ws.text(_clientId, json("success", "relay", "state", "\"" + data + "\""));
+    ws.text(_clientId, json("success", "login", "grant", "\"Fingerprint match found\""));
   }
   delay(1000);
   return;// finger.fingerID;
@@ -515,6 +528,16 @@ bool enrollFingerprint() {
   return true;
 }
 
+void emptyFingerprint() {
+  int result = finger.emptyDatabase();
+  if (result == FINGERPRINT_OK) {
+    ws.text(_clientId, json("success", "sensor", "delete-all", "\"All fingerprints are deleted.\""));
+  } else {
+    ws.text(_clientId, json("error", "sensor", "delete-all", "\"internal error. Delete all failed\""));
+  } 
+  _session = SESSION.ready;
+}
+
 String getConfig(String f, String data) {
   String value = data;
   File file = SPIFFS.open(f, "r");
@@ -610,7 +633,6 @@ void sensor(String param) {
     ws.text(_clientId, json("error", "sensor", "invalid data", "\"" + param + "\""));
 
   } else {
-
     
     if (request == "available") {
       _session = SESSION.sensor_verify;
@@ -621,40 +643,59 @@ void sensor(String param) {
     } else if (request == "state") {
       if (index == -1) {
         String data = _sensorIsEnable ? "1" : "0";      
-        ws.text(_clientId, json("success", "sensor", "state", "\"" + data + "\""));
+        if (_clientId > 0) {
+          ws.text(_clientId, json("success", "sensor", "state", "\"" + data + "\""));
+
+        } else {
+          // if (_token == "") {
+          //   _token = param.substring(index + 1);         
+          //   ws.textAll(json("success", "sensor", data));
+          // }
+          
+        }
+        
       } else {
         String path = param.substring(index + 1);
         if (path == "0") {
           _sensorIsEnable = false;
           ws.text(_clientId, json("success", "sensor", "state", "\"0\""));
+
         } else if (path == "1") {
           _sensorIsEnable = true;
           ws.text(_clientId, json("success", "sensor", "state", "\"1\""));
+
         } else {
           ws.text(_clientId, json("error", "sensor", "invalid state"));
+
         }
       }
     } else if (request == "download") {
       if (_sensorIsAvailable) {
         _session = SESSION.sensor_download;
+
       } else {
         ws.text(_clientId, json("error", "sensor", "sensor is not available"));
+
       }
 
     } else if (request == "enroll") {
       if (index == -1) {
         ws.text(_clientId, json("error", "sensor", "enroll", "\"fingerprint id not found\""));
+
       } else {
         String path = param.substring(index + 1);
         if (path == "cancel") {
           ws.text(_clientId, json("success", "sensor", "enroll", "\"cancel\""));
           _session = SESSION.ready;
+
         } else {
           _fingerId = path.toInt();
           if (_fingerId > 0) {
             _session = SESSION.sensor_enroll;
+
           } else {
             ws.text(_clientId, json("error", "sensor", "enroll", "\"invalid fingerprint id\""));
+
           }
         }
 
@@ -664,10 +705,32 @@ void sensor(String param) {
       _fingerId = path.toInt();
       if (_fingerId <= 0) {
         ws.text(_clientId, json("error", "sensor", "delete", "\"invalid fingerprint id\""));
+
       } else {
         _session = SESSION.sensor_delete;
+
       }
 
+    } else if (request == "delete-all") {
+      _session = SESSION.sensor_empty;
+
+    } else if (request == "login") {
+      // if (_sensorLogin) {
+
+      //   String data = "{"
+      //             "\"message\": \"User is logging in using sensor\""
+      //             "}";
+
+      //   ws.textAll(json("error", "sensor" , "login", data));
+
+      // } else {
+      //   _token = param.substring(index + 1);
+      //   if (_token == "") {
+          
+      //   } else {
+      //   }
+      // }
+      
     } else {
       ws.text(_clientId, json("error", "sensor", "invalid type", "\"" + request + "\""));
     }
