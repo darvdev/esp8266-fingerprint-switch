@@ -22,10 +22,10 @@ String _wifiSsid = "";
 String _wifiPass = "!";
 
 bool _ledState = false;
-bool _relayState = false;
+bool _relayState = true;
+
 unsigned long _previousMillis = 0;
 unsigned long _sensorMillis = 0;
-
 
 uint8_t _clientId = 0;
 int _fingerId = 0;
@@ -127,7 +127,7 @@ void setup() {
   delay(2000);
   pinMode(LED_PIN, OUTPUT);
   pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, LOW);
+  digitalWrite(RELAY_PIN, _relayState);
   Serial.begin(BAUD_RATE);
 
   finger.begin(57600);
@@ -160,7 +160,6 @@ void setup() {
   Serial.print("Wifi SSID: "); Serial.println(_wifiSsid);
   Serial.print("Wifi Pass: "); Serial.println(_wifiPass);
 
-  WiFi.SSID() = "tae";
   WiFi.mode(WIFI_AP_STA);
   WiFi.softAP(_apSsid, _apPass);
   Serial.print("Please connect to "); Serial.println(WiFi.softAPIP());
