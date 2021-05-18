@@ -1033,6 +1033,7 @@ uint8_t downloadFingerprintTemplate() {
   ws.text(_clientId, json("success", "sensor", "download", "\"done\""));
 
   Serial.println("\nFingerprint template downloaded.");
+  delay(1000);
   _session = SESSION.ready;
 
 }
