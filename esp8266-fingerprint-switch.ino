@@ -5,6 +5,7 @@
 
 #define LED_PIN 2
 #define RELAY_PIN 4
+#define RELAY2_PIN 5
 #define FP_TX_PIN 13
 #define FP_RX_PIN 12
 #define PORT 4848
@@ -36,7 +37,10 @@ String _token = "";
 bool _sensorIsAvailable = false;
 bool _sensorIsEnable = true;
 bool _espSet = false;
-bool _sensorLogin = false;
+bool initialize = false;
+// bool _sensorLogin = false;
+int _engineStart = 0;
+int _confidence = 50;
 
 SoftwareSerial serial(FP_TX_PIN, FP_RX_PIN);
 Adafruit_Fingerprint finger = Adafruit_Fingerprint(&serial);
@@ -124,64 +128,28 @@ void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType 
 
 void setup() {
 
-  delay(2000);
+  delay(1000);
+  digitalWrite(FP_TX_PIN, LOW);
+  digitalWrite(FP_RX_PIN, LOW);
   pinMode(LED_PIN, OUTPUT);
   pinMode(RELAY_PIN, OUTPUT);
+  pinMode(RELAY2_PIN, OUTPUT);
   digitalWrite(RELAY_PIN, _relayState);
+  digitalWrite(RELAY2_PIN, HIGH);
+  
   Serial.begin(BAUD_RATE);
 
   finger.begin(57600);
   _sensorIsAvailable = finger.verifyPassword();
 
   if (_sensorIsAvailable) {
-    Serial.println("\nFound sensor!");
-    // Serial.println(F("Reading fingerprint sensor parameters"));
-    // finger.getParameters();
-    // Serial.println("Getting fingerprint template counts");
-    // finger.getTemplateCount();
-    // Serial.println("Sensor initialize done!");
+    finger.LEDcontrol(3, 0, 2, 1);
+    Serial.println("\nSensor ready!");
   } else {
     Serial.println("\nSensor is not available");
   }
 
-  if (SPIFFS.begin()) {
-    Serial.println("SPIFFS mounted");
-    _apSsid = getConfig("/ap_ssid.txt", _apSsid);
-    _apPass = getConfig("/ap_pass.txt", _apPass);
-    _pass = getConfig("/pass.txt", _pass);
-    _wifiSsid = getConfig("/wifi_ssid.txt", _wifiSsid);
-    _wifiPass = getConfig("/wifi_pass.txt", _wifiPass);
-  }
-
-  
-  Serial.print("Admin pass: "); Serial.println(_pass);
-  Serial.print("AP ssid: "); Serial.println(_apSsid);
-  Serial.print("AP pass: "); Serial.println(_apPass);
-  Serial.print("Wifi SSID: "); Serial.println(_wifiSsid);
-  Serial.print("Wifi Pass: "); Serial.println(_wifiPass);
-
-  WiFi.mode(WIFI_AP_STA);
-  WiFi.softAP(_apSsid, _apPass);
-  Serial.print("Please connect to "); Serial.println(WiFi.softAPIP());
-
-  // if (_wifiSsid != "") {
-  //   Serial.print("Connecting to wifi ");
-  //   WiFi.begin(_wifiSsid, _wifiPass);
-  //   while (WiFi.status() != WL_CONNECTED) {
-  //     delay(300);
-  //     Serial.print(".");
-  //   }
-  //   Serial.println();
-  //   Serial.print("Connected! IP address: ");
-  //   Serial.println(WiFi.localIP());
-  // }
-
-  ws.onEvent(onEvent);
-  server.addHandler(&ws);
-  server.begin();
   _session = SESSION.ready;
-  Serial.println("Ready!");
-  Serial.println();
 }
 
 void loop() {
@@ -260,20 +228,73 @@ void loop() {
 
   //  ws.cleanupClients();
 
+  if (!initialize) {
+    initialize = true;
+
+    if (SPIFFS.begin()) {
+    Serial.println("SPIFFS mounted");
+    _apSsid = getConfig("/ap_ssid.txt", _apSsid);
+    _apPass = getConfig("/ap_pass.txt", _apPass);
+    _pass = getConfig("/pass.txt", _pass);
+    _wifiSsid = getConfig("/wifi_ssid.txt", _wifiSsid);
+    _wifiPass = getConfig("/wifi_pass.txt", _wifiPass);
+    _engineStart = getConfig("/engine_start.txt", String(_engineStart)).toInt();
+    int confidence = getConfig("/confidence.txt", String(_confidence)).toInt();
+    _confidence = confidence < 10 ? _confidence : confidence;
+  }
+  
+  Serial.print("Engine delay: "); Serial.println(_engineStart);
+  Serial.print("Fingerprint confidence: "); Serial.println(_confidence);
+  Serial.print("Admin pass: "); Serial.println(_pass);
+  Serial.print("AP ssid: "); Serial.println(_apSsid);
+  Serial.print("AP pass: "); Serial.println(_apPass);
+  Serial.print("Wifi SSID: "); Serial.println(_wifiSsid);
+  Serial.print("Wifi Pass: "); Serial.println(_wifiPass);
+
+
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.softAP(_apSsid, _apPass);
+  Serial.print("Please connect to "); Serial.println(WiFi.softAPIP());
+
+  // if (_wifiSsid != "") {
+  //   Serial.print("Connecting to wifi ");
+  //   WiFi.begin(_wifiSsid, _wifiPass);
+  //   while (WiFi.status() != WL_CONNECTED) {
+  //     delay(300);
+  //     Serial.print(".");
+  //   }
+  //   Serial.println();
+  //   Serial.print("Connected! IP address: ");
+  //   Serial.println(WiFi.localIP());
+  // }
+
+  ws.onEvent(onEvent);
+  server.addHandler(&ws);
+  server.begin();
+  // _session = SESSION.ready;
+  Serial.println("Server ready!");
+  Serial.println();
+
+  }
+
 }
 
 void listenToSensor() {
   uint8_t p = finger.getImage();
   switch (p) {
-    case FINGERPRINT_OK: Serial.println("Image taken"); break;
+    case FINGERPRINT_OK:
+      Serial.println("Image taken"); break;
     case FINGERPRINT_NOFINGER:
       return;
     case FINGERPRINT_PACKETRECIEVEERR:
 //            Serial.println("Communication error 1");
       return;
-    case FINGERPRINT_IMAGEFAIL: Serial.println("Imaging error");
+    case FINGERPRINT_IMAGEFAIL:
+      Serial.println("Imaging error");
       return;
-    default: Serial.println("Unknown error 1"); return;
+    default:
+      Serial.println("Unknown error 1");
+      return;
   }
 
   // OK success!
@@ -308,6 +329,9 @@ void listenToSensor() {
     Serial.println("Communication error");
     return;
   } else if (p == FINGERPRINT_NOTFOUND) {
+    finger.LEDcontrol(2, 20, 1, 3);
+    delay(500);
+    finger.LEDcontrol(3, 0, _relayState ? 2 : 3, 1);
     Serial.println("Did not find a match");
     if (_clientId > 0) {
       ws.text(_clientId, json("success", "login", "denied", "\"Fingerprint not found\""));
@@ -320,15 +344,36 @@ void listenToSensor() {
 
   // found a match!
   Serial.print("Found ID #"); Serial.print(finger.fingerID);
-  Serial.print(" with confidence of "); Serial.println(finger.confidence);
-  _relayState =!_relayState;
-  digitalWrite(RELAY_PIN, _relayState);
-  String data = _relayState ? "1" : "0";
-  if (_clientId > 0) {
-    ws.text(_clientId, json("success", "relay", "state", "\"" + data + "\""));
-    ws.text(_clientId, json("success", "login", "grant", "\"Fingerprint match found\""));
+  uint16_t confidence = finger.confidence;
+  Serial.print(" with confidence of "); Serial.println(confidence);
+
+  if (confidence >= _confidence) {
+    // finger.LEDcontrol(2, 20, _relayState ? 2 : 3, 3);
+    _relayState =!_relayState;
+    digitalWrite(RELAY_PIN, _relayState);
+    finger.LEDcontrol(3, 0, _relayState ? 2 : 3, 1);
+    String data = _relayState ? "1" : "0";
+    if (_clientId > 0) {
+      ws.text(_clientId, json("success", "relay", "state", "\"" + data + "\""));
+      ws.text(_clientId, json("success", "login", "grant", "\"Fingerprint match found\""));
+    }
+    delay(500);
+    if (!_relayState && _engineStart >= 1000 && _engineStart < 5000) {
+      Serial.print("Engine starts within "); Serial.print(_engineStart); Serial.println(" milliseconds");
+      digitalWrite(RELAY2_PIN, LOW);
+      delay(_engineStart);
+      digitalWrite(RELAY2_PIN, HIGH);
+      Serial.print("Starter off");
+    }
+  } else {
+    if (_clientId > 0) {
+      ws.text(_clientId, json("success", "login", "denied", "\"Fingerprint minimum confidence not reached\""));
+    }
+    finger.LEDcontrol(2, 20, _relayState ? 2 : 3, 3);
+    delay(500);
+    finger.LEDcontrol(3, 0, _relayState ? 2 : 3, 1);
   }
-  delay(1000);
+  
   return;// finger.fingerID;
 }
 
@@ -713,23 +758,11 @@ void sensor(String param) {
     } else if (request == "delete-all") {
       _session = SESSION.sensor_empty;
 
-    } else if (request == "login") {
-      // if (_sensorLogin) {
+    } else if (request == "confidence") {
 
-      //   String data = "{"
-      //             "\"message\": \"User is logging in using sensor\""
-      //             "}";
+      String param2 = param.substring(index + 1);
+      int index2 = param2.indexOf("=");
 
-      //   ws.textAll(json("error", "sensor" , "login", data));
-
-      // } else {
-      //   _token = param.substring(index + 1);
-      //   if (_token == "") {
-          
-      //   } else {
-      //   }
-      // }
-      
     } else {
       ws.text(_clientId, json("error", "sensor", "invalid type", "\"" + request + "\""));
     }
@@ -748,7 +781,6 @@ void relay(String param) {
   }
   
   if (request == "") {
-
     ws.text(_clientId, json("error", "relay", "invalid data", "\"" + param + "\""));
     
   } else {
@@ -757,17 +789,25 @@ void relay(String param) {
       if (index == -1) {
         String data = _relayState ? "1" : "0";
         ws.text(_clientId, json("success", "relay", "state", "\"" + data + "\""));
+
       } else {
         String path = param.substring(index + 1);
         if (path == "0") {
           _relayState = false;
           ws.text(_clientId, json("success", "relay", "state", "\"0\""));
+
         } else if (path == "1") {
           _relayState = true;
           ws.text(_clientId, json("success", "relay", "state", "\"1\""));
+
         }
+        digitalWrite(RELAY_PIN, _relayState);
+        if (_sensorIsAvailable) {
+          finger.LEDcontrol(3, 0, _relayState ? 2 : 3, 1);
+        }
+
       }
-      digitalWrite(RELAY_PIN, _relayState);
+      
     }
     
   }
