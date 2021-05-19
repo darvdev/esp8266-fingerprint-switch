@@ -17,30 +17,26 @@ static const String PATH = "v1";
 
 String _apSsid = "FingerprintSwitch v" + VERSION;
 String _apPass = "";
-
 String _wifiSsid = "";
 String _wifiPass = "!";
-
-bool _ledState = false;
-bool _relayState = true;
+String _pass = "1234";
+String _token = "";
 
 unsigned long _previousMillis = 0;
 unsigned long _sensorFailedMillis = 0;
 unsigned long _sensorMillis = 0;
 
-uint8_t _clientId = 0;
-int _fingerId = 0;
-
-String _pass = "1234";
-String _token = "";
-
+bool _ledState = false;
+bool _relayState = true;
 bool _sensorIsAvailable = false;
 bool _sensorIsEnable = true;
 bool _espSet = false;
 bool initialize = false;
-// bool _sensorLogin = false;
+
 int _engineStart = 0;
 int _confidence = 50;
+int _fingerId = 0;
+uint8_t _clientId = 0;
 
 SoftwareSerial serial(FP_TX_PIN, FP_RX_PIN);
 Adafruit_Fingerprint finger = Adafruit_Fingerprint(&serial);
@@ -58,8 +54,6 @@ static const struct SESSION
   static const uint8_t sensor_enroll = 6;
   static const uint8_t sensor_delete = 7;
   static const uint8_t sensor_empty = 8;
-  static const uint8_t sensor_busy = 9;
-  // static const uint8_t sensor_login = 9;
 } SESSION;
 
 uint8_t _session = SESSION.init_main;
@@ -148,8 +142,6 @@ void setup()
 {
 
   delay(1000);
-  digitalWrite(FP_TX_PIN, LOW);
-  digitalWrite(FP_RX_PIN, LOW);
   pinMode(LED_PIN, OUTPUT);
   pinMode(RELAY_PIN, OUTPUT);
   pinMode(RELAY2_PIN, OUTPUT);
@@ -275,8 +267,8 @@ void loop()
       _apSsid = getConfig("/ap_ssid.txt", _apSsid);
       _apPass = getConfig("/ap_pass.txt", _apPass);
       _pass = getConfig("/pass.txt", _pass);
-      _wifiSsid = getConfig("/wifi_ssid.txt", _wifiSsid);
-      _wifiPass = getConfig("/wifi_pass.txt", _wifiPass);
+      // _wifiSsid = getConfig("/wifi_ssid.txt", _wifiSsid);
+      // _wifiPass = getConfig("/wifi_pass.txt", _wifiPass);
       _engineStart = getConfig("/engine_start.txt", String(_engineStart)).toInt();
       int confidence = getConfig("/confidence.txt", String(_confidence)).toInt();
       _confidence = confidence < 10 ? _confidence : confidence;
@@ -292,27 +284,11 @@ void loop()
     Serial.println(_apSsid);
     Serial.print("AP pass: ");
     Serial.println(_apPass);
-    Serial.print("Wifi SSID: ");
-    Serial.println(_wifiSsid);
-    Serial.print("Wifi Pass: ");
-    Serial.println(_wifiPass);
 
     WiFi.mode(WIFI_AP_STA);
     WiFi.softAP(_apSsid, _apPass);
     Serial.print("Please connect to ");
     Serial.println(WiFi.softAPIP());
-
-    // if (_wifiSsid != "") {
-    //   Serial.print("Connecting to wifi ");
-    //   WiFi.begin(_wifiSsid, _wifiPass);
-    //   while (WiFi.status() != WL_CONNECTED) {
-    //     delay(300);
-    //     Serial.print(".");
-    //   }
-    //   Serial.println();
-    //   Serial.print("Connected! IP address: ");
-    //   Serial.println(WiFi.localIP());
-    // }
 
     ws.onEvent(onEvent);
     server.addHandler(&ws);
@@ -337,10 +313,10 @@ void listenToSensor()
     //            Serial.println("Communication error 1");
     return;
   case FINGERPRINT_IMAGEFAIL:
-    Serial.println("Imaging error");
+    // Serial.println("Imaging error");
     return;
   default:
-    Serial.println("Unknown error 1");
+    // Serial.println("Unknown error 1");
     return;
   }
 
@@ -407,11 +383,11 @@ void listenToSensor()
 
   if (confidence >= _confidence)
   {
-    // finger.LEDcontrol(2, 20, _relayState ? 2 : 3, 3);
     _relayState = !_relayState;
     digitalWrite(RELAY_PIN, _relayState);
     finger.LEDcontrol(3, 0, _relayState ? 2 : 3, 1);
     String data = _relayState ? "1" : "0";
+    Serial.println("Relay activated");
     if (_clientId > 0)
     {
       ws.text(_clientId, json("success", "relay", "state", "\"" + data + "\""));
@@ -431,11 +407,12 @@ void listenToSensor()
   }
   else
   {
+    finger.LEDcontrol(2, 20, _relayState ? 2 : 3, 3);
     if (_clientId > 0)
     {
       ws.text(_clientId, json("success", "login", "denied", "\"Fingerprint minimum confidence not reached\""));
     }
-    finger.LEDcontrol(2, 20, _relayState ? 2 : 3, 3);
+    Serial.println("Minimun confidence not reached");
     delay(500);
     finger.LEDcontrol(3, 0, _relayState ? 2 : 3, 1);
   }
@@ -1025,7 +1002,10 @@ void esp(String param)
                                         "\"wifi_channel\": \"" +
                     WiFi.channel() + "\","
                                      "\"wifi_state\": \"" +
-                    WiFi.isConnected() + "\""
+                    WiFi.isConnected() + "\","
+                    "\"confidence\": \"" + String(_confidence) + "\","
+                    "\"engine_start\": \"" +
+                    String(_engineStart) + "\""
                                          "}";
 
       ws.text(_clientId, json("success", "esp", "info", data));
@@ -1087,6 +1067,22 @@ void esp(String param)
             }
             setConfig("/wifi_pass.txt", value);
           }
+          else if (request2 == "confidence")
+          {
+            while (_espSet)
+            {
+            }
+            setConfig("/confidence.txt", value);
+            _confidence = value.toInt();
+          }
+          else if (request2 == "engine")
+          {
+            while (_espSet)
+            {
+            }
+            setConfig("/engine_start.txt", value);
+            _engineStart = value.toInt();
+          }
           else
           {
             ws.text(_clientId, json("error", "esp", "set", "invalid request"));
@@ -1111,23 +1107,15 @@ void getSensorInfo()
     finger.getTemplateCount();
 
     String data = "{"
-                  "\"status_reg\": \"" +
-                  String(finger.status_reg, HEX) + "\","
-                                                   "\"system_id\": \"" +
-                  String(finger.system_id, HEX) + "\","
-                                                  "\"capacity\": \"" +
-                  String(finger.capacity) + "\","
-                                            "\"security_level\": \"" +
-                  String(finger.security_level) + "\","
-                                                  "\"device_addr\": \"" +
-                  String(finger.device_addr, HEX) + "\","
-                                                    "\"packet_len\": \"" +
-                  String(finger.packet_len) + "\","
-                                              "\"baud_rate\": \"" +
-                  String(finger.baud_rate) + "\","
-                                             "\"template_count\": \"" +
-                  String(finger.templateCount) + "\""
-                                                 "}";
+                  "\"status_reg\": \"" + String(finger.status_reg, HEX) + "\","
+                  "\"system_id\": \"" + String(finger.system_id, HEX) + "\","
+                  "\"capacity\": \"" + String(finger.capacity) + "\","
+                  "\"security_level\": \"" + String(finger.security_level) + "\","
+                  "\"device_addr\": \"" + String(finger.device_addr, HEX) + "\","
+                  "\"packet_len\": \"" + String(finger.packet_len) + "\","
+                  "\"baud_rate\": \"" + String(finger.baud_rate) + "\","
+                  "\"template_count\": \"" + String(finger.templateCount) + "\""
+                  "}";
 
     ws.text(_clientId, json("success", "sensor", "info", data));
   }
