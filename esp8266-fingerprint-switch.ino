@@ -19,7 +19,7 @@ String _apSsid = "FingerprintSwitch v" + VERSION;
 String _apPass = "";
 String _wifiSsid = "";
 String _wifiPass = "";
-String _pass = "1234";
+String _pass = "123456";
 String _token = "";
 
 unsigned long _previousMillis = 0;
